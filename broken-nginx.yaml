@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broken-nginx
+  namespace: demo-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: broken-nginx
+  template:
+    metadata:
+      labels:
+        app: broken-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:wrongtag
+          ports:
+            - containerPort: 80
