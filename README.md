@@ -1,35 +1,95 @@
-# AI Kubernetes Agent
+# AI Kubernetes Troubleshooting Agent
 
-This project is a small, read-only Kubernetes investigation API.
+A small, read-only FastAPI backend for investigating Kubernetes problems.
 
-It looks at a target namespace and resource, gathers live Kubernetes output, inspects related pods, applies a few rule-based checks, and optionally asks OpenRouter for an LLM diagnosis.
+The agent collects cluster evidence with `kubectl`, applies rule-based diagnosis, and optionally asks OpenRouter for a concise operator-safe explanation.
 
 ## What It Does
 
-- Runs read-only `kubectl` commands against a cluster
-- Collects pod, event, and deployment output
-- Finds related pods, then collects pod describes and pod logs
-- Applies simple rules for common failure patterns
-- Sends the gathered text to OpenRouter for an optional LLM diagnosis
-- Returns everything in a single JSON response from `/api/investigate`
+- Investigates a workload by namespace and resource name
+- Collects pods, events, deployment describe output, pod describes, pod logs, services, endpoints, and ReplicaSets
+- Builds a small resource summary for the current investigation
+- Uses rule-based diagnosis for common failure modes
+- Uses OpenRouter for a second-pass explanation that is safe for human operators
+- Never applies fixes automatically
 
 ## Architecture
 
-- `app/main.py` exposes the FastAPI app and the `/api/investigate` endpoint
-- `app/k8s_client.py` runs read-only `kubectl` commands with `subprocess`
-- `app/investigator.py` combines Kubernetes output, related pod describes/logs, rule-based diagnosis, and LLM output
-- `app/openrouter_client.py` calls OpenRouter and converts upstream failures into `diagnosis.llm.error`
+```
+Client
+  |
+  v
+FastAPI /api/investigate
+  |
+  +--> app/investigator.py
+  |      - runs read-only kubectl commands
+  |      - discovers related pods
+  |      - gathers pod describe/log output
+  |      - collects services, endpoints, ReplicaSets
+  |      - builds resource_summary
+  |      - runs rule-based diagnosis
+  |
+  +--> app/openrouter_client.py
+         - sends a safety-constrained prompt to OpenRouter
+         - returns an explanation or a structured error
+```
 
-The API does not patch, restart, or modify Kubernetes resources.
+### Request Flow
+
+1. The client calls `/api/investigate?namespace=...&resource_name=...`.
+2. The backend gathers read-only Kubernetes evidence.
+3. The diagnosis layer scans the collected text for known patterns.
+4. The LLM layer receives the evidence, summary, and diagnosis context.
+5. The API returns one JSON payload with all evidence and explanations.
+
+### Investigation Responsibilities
+
+- Discover pods linked to the requested resource
+- Describe each pod and fetch recent logs
+- Collect supporting cluster context with `kubectl get svc`, `kubectl get endpoints`, and `kubectl get rs`
+- Build a structured summary for the incident
+- Keep every command read-only
+
+### LLM Responsibilities
+
+- Summarize the likely issue
+- Describe evidence in operator-friendly language
+- Recommend commands that a human operator can review and run
+- Never claim it will fix, apply, patch, or change the cluster
+
+### Safety Model
+
+- No `kubectl apply`
+- No `kubectl delete`
+- No `kubectl patch`
+- No `kubectl set`
+- No `kubectl rollout restart`
+- No automatic remediation of any kind
+- The LLM may recommend commands, but a human operator must run them
 
 ## Prerequisites
 
 - Python 3.12 or newer
-- `kubectl` configured with access to your cluster
-- A Kubernetes namespace and resource to inspect
-- Optional: an OpenRouter API key for LLM diagnosis
+- `kubectl` installed and configured
+- Access to a Kubernetes cluster or k3s context
+- Optional: OpenRouter API key for LLM explanations
 
-## Local Setup
+## Required Environment Variables
+
+Copy the template and fill in your local values:
+
+```bash
+copy .env.example .env
+```
+
+Environment variables used by the backend:
+
+- `OPENROUTER_API_KEY` - optional, enables the LLM explanation
+- `OPENROUTER_MODEL` - defaults to `nvidia/nemotron-3-ultra-550b-a55b:free`
+- `KUBECTL_TIMEOUT_SECONDS` - defaults to `15`
+- `LOG_TAIL_LINES` - defaults to `100`
+
+## Run Locally
 
 1. Create and activate a virtual environment:
 
@@ -38,7 +98,7 @@ The API does not patch, restart, or modify Kubernetes resources.
    .\venv\Scripts\Activate.ps1
    ```
 
-   On WSL or macOS/Linux:
+   On WSL or Linux:
 
    ```bash
    python -m venv venv
@@ -48,81 +108,73 @@ The API does not patch, restart, or modify Kubernetes resources.
 2. Install dependencies:
 
    ```bash
-   pip install -r requirements.txt
+   make install
    ```
 
-3. Configure environment variables:
+3. Start the API:
 
    ```bash
-   copy .env.example .env
+   make run
    ```
 
-   Set `OPENROUTER_API_KEY` in `.env` if you want LLM output.
+4. Open the docs or call the API directly at `http://127.0.0.1:8000`.
 
-4. Start the API:
+## Demo Workloads
 
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+Create the demo namespace if it does not already exist:
 
-## Demo Workload
+```bash
+kubectl create namespace demo-apps
+```
 
-The repository includes `broken-nginx.yaml`, which defines a deliberately broken deployment in the `demo-apps` namespace.
+Apply the intentionally broken workloads:
 
-1. Create the namespace:
+```bash
+kubectl apply -f broken-nginx.yaml
+kubectl apply -f crashloop-app.yaml
+kubectl apply -f pending-app.yaml
+```
 
-   ```bash
-   kubectl create namespace demo-apps
-   ```
+Use these manifests to test the common failure paths:
 
-2. Apply the workload:
+- `broken-nginx.yaml` for `ImagePullBackOff`
+- `crashloop-app.yaml` for `CrashLoopBackOff`
+- `pending-app.yaml` for pending or scheduling failures
 
-   ```bash
-   kubectl apply -f broken-nginx.yaml
-   ```
+## Example Curl Commands
 
-The manifest uses `nginx:wrongtag`, so the pod should fail with an image pull problem.
-
-## Example Requests
-
-Investigate the demo workload:
+Broken image demo:
 
 ```bash
 curl "http://127.0.0.1:8000/api/investigate?namespace=demo-apps&resource_name=broken-nginx"
 ```
 
-Investigate a different resource:
+Crash loop demo:
 
 ```bash
-curl "http://127.0.0.1:8000/api/investigate?namespace=default&resource_name=my-app"
+curl "http://127.0.0.1:8000/api/investigate?namespace=demo-apps&resource_name=crashloop-app"
+```
+
+Pending demo:
+
+```bash
+curl "http://127.0.0.1:8000/api/investigate?namespace=demo-apps&resource_name=pending-app"
 ```
 
 ## Example Response
 
-The API also includes `pod_describes` and `pod_logs` arrays for each matching pod.
+The response keeps the Kubernetes evidence and adds `resource_summary`, `diagnosis.evidence`, and `diagnosis.llm`.
 
 ```json
 {
   "namespace": "demo-apps",
   "resource_name": "broken-nginx",
-  "pods": {
-    "command": ["kubectl", "get", "pods", "-n", "demo-apps"],
-    "returncode": 0,
-    "stdout": "...",
-    "stderr": ""
-  },
-  "events": {
-    "command": ["kubectl", "get", "events", "-n", "demo-apps", "--sort-by=.lastTimestamp"],
-    "returncode": 0,
-    "stdout": "...",
-    "stderr": ""
-  },
-  "deployment": {
-    "command": ["kubectl", "describe", "deployment", "broken-nginx", "-n", "demo-apps"],
-    "returncode": 0,
-    "stdout": "...",
-    "stderr": ""
-  },
+  "pods": { "command": ["kubectl", "get", "pods", "-n", "demo-apps"], "returncode": 0, "stdout": "...", "stderr": "" },
+  "events": { "command": ["kubectl", "get", "events", "-n", "demo-apps", "--sort-by=.lastTimestamp"], "returncode": 0, "stdout": "...", "stderr": "" },
+  "deployment": { "command": ["kubectl", "describe", "deployment", "broken-nginx", "-n", "demo-apps"], "returncode": 0, "stdout": "...", "stderr": "" },
+  "services": { "command": ["kubectl", "get", "svc", "-n", "demo-apps"], "returncode": 0, "stdout": "...", "stderr": "" },
+  "endpoints": { "command": ["kubectl", "get", "endpoints", "-n", "demo-apps"], "returncode": 0, "stdout": "...", "stderr": "" },
+  "replicasets": { "command": ["kubectl", "get", "rs", "-n", "demo-apps"], "returncode": 0, "stdout": "...", "stderr": "" },
   "pod_describes": [
     {
       "pod_name": "broken-nginx-7d8c",
@@ -141,14 +193,27 @@ The API also includes `pod_describes` and `pod_logs` arrays for each matching po
       "stderr": "Error from server (BadRequest): container is waiting: ImagePullBackOff"
     }
   ],
+  "resource_summary": {
+    "namespace": "demo-apps",
+    "resource_name": "broken-nginx",
+    "detected_pod_names": ["broken-nginx-7d8c"],
+    "pod_count": 1,
+    "has_logs": false,
+    "investigation_timestamp_utc": "2026-07-06T00:00:00Z"
+  },
   "diagnosis": {
-    "root_cause": "Invalid container image or image tag",
+    "root_cause": "Container image cannot be pulled or does not exist",
     "severity": "High",
     "confidence": 95,
-    "suggested_fix": "Update the deployment to use a valid image tag, then verify rollout status.",
+    "suggested_fix": "Recommended fix: a human operator can review the image name and tag in the Deployment, correct the reference if needed, and then verify the rollout.",
     "verification_commands": [
       "kubectl get pods -n demo-apps",
+      "kubectl describe deployment broken-nginx -n demo-apps",
       "kubectl rollout status deployment/broken-nginx -n demo-apps"
+    ],
+    "evidence": [
+      "Failed to pull image \"nginx:wrongtag\"",
+      "Back-off pulling image \"nginx:wrongtag\""
     ],
     "llm": {
       "enabled": false,
@@ -159,11 +224,40 @@ The API also includes `pod_describes` and `pod_logs` arrays for each matching po
 }
 ```
 
-## Safety Note
+## Safety Notes
 
-This project is read-only by design.
+- The backend is read-only
+- It only gathers evidence and returns recommendations
+- It does not apply fixes automatically
+- The LLM is constrained to operator-safe wording
 
-- It only gathers Kubernetes information
-- It does not auto-fix workloads
-- It does not restart pods or patch resources
-- Any remediation must be done manually by the operator
+## Troubleshooting
+
+### `OPENROUTER_API_KEY` not set
+
+If the key is missing, the LLM section returns a structured error and the Kubernetes investigation still succeeds.
+
+### OpenRouter 401
+
+A 401 usually means the API key is missing, invalid, or revoked. Update the key in `.env` and restart the app.
+
+### OpenRouter 429
+
+A 429 usually means the model is rate-limited. The backend keeps returning the Kubernetes evidence and puts the error under `diagnosis.llm.error`.
+
+### `kubectl` not found
+
+Install `kubectl` and make sure it is on your `PATH`.
+
+### k3s / kubeconfig not reachable
+
+Verify the current context with `kubectl config current-context` and confirm your kubeconfig is pointing at a live cluster or k3s endpoint.
+
+## Useful Make Targets
+
+- `make install`
+- `make test`
+- `make run`
+- `make check`
+- `make demo-apply`
+- `make demo-status`

@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import os
-
 import requests
 
+from app.settings import get_settings
 
-DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-120b:free"
+
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_SYSTEM_PROMPT = (
     "You are a read-only Kubernetes incident assistant. "
     "Never say or imply you will apply, execute, fix, update, change, patch, restart, or modify the cluster yourself. "
     "Only recommend commands for a human operator to review and run. "
+    "Respond with these sections in order: Issue, Evidence, Likely root cause, Recommended fix, Commands a human operator can run, Verification steps, Risk / caution, Do not apply automatically. "
     "Use wording like 'Recommended fix', 'A human operator can run', 'To verify', and 'Do not apply automatically'. "
     "Avoid wording like 'I'll fix this', 'I will update', or 'I can apply'. "
     "Keep the response concise and clearly focused on operator-guided remediation."
 )
-
-
-def get_openrouter_model() -> str:
-    return os.getenv("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL)
-
-
-def get_openrouter_api_key() -> str | None:
-    return os.getenv("OPENROUTER_API_KEY")
 
 
 def _format_openrouter_error(status_code: int, response_text: str | None = None) -> str:
@@ -66,8 +58,9 @@ def _extract_response_text(response: requests.Response) -> str | None:
 
 
 def analyze_with_openrouter(prompt: str) -> dict[str, object]:
-    api_key = get_openrouter_api_key()
-    model = get_openrouter_model()
+    settings = get_settings()
+    api_key = settings.openrouter_api_key
+    model = settings.openrouter_model
 
     if not api_key:
         return {

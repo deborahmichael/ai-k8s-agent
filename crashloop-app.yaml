@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop-app
+  namespace: demo-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crashloop-app
+  template:
+    metadata:
+      labels:
+        app: crashloop-app
+    spec:
+      containers:
+        - name: crashloop-app
+          image: busybox
+          # Intentionally broken for testing CrashLoopBackOff behavior.
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              echo "[crashloop-app] starting intentionally broken container"
+              echo "[crashloop-app] simulated startup error"
+              sleep 2
+              exit 1

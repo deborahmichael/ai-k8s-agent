@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import requests
@@ -23,25 +24,57 @@ class FakeResponse:
 
 
 class OpenRouterClientTests(unittest.TestCase):
-    @patch("app.openrouter_client.get_openrouter_api_key", return_value="test-key")
+    @patch("app.openrouter_client.get_settings")
     @patch("app.openrouter_client.requests.post")
-    def test_includes_safety_system_prompt(self, mock_post: object, mock_api_key: object) -> None:
-        mock_post.return_value = FakeResponse(
-            200,
-            payload={"choices": [{"message": {"content": "ok"}}]},
+    def test_uses_safety_system_prompt(self, mock_post: object, mock_get_settings: object) -> None:
+        mock_get_settings.return_value = SimpleNamespace(
+            openrouter_api_key="test-key",
+            openrouter_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            kubectl_timeout_seconds=15,
+            log_tail_lines=100,
         )
+        mock_post.return_value = FakeResponse(200, payload={"choices": [{"message": {"content": "ok"}}]})
 
-        analyze_with_openrouter("prompt")
+        result = analyze_with_openrouter("prompt")
 
+        self.assertEqual(result["enabled"], True)
         payload = mock_post.call_args.kwargs["json"]
         self.assertEqual(payload["messages"][0]["role"], "system")
         self.assertIn("read-only Kubernetes incident assistant", payload["messages"][0]["content"])
-        self.assertIn("Only recommend commands for a human operator", payload["messages"][0]["content"])
+        self.assertIn("Do not apply automatically", payload["messages"][0]["content"])
+        self.assertIn("Commands a human operator can run", payload["messages"][0]["content"])
         self.assertEqual(payload["messages"][1]["role"], "user")
+        self.assertEqual(result["content"], "ok")
 
-    @patch("app.openrouter_client.get_openrouter_api_key", return_value="test-key")
+    @patch("app.openrouter_client.get_settings")
     @patch("app.openrouter_client.requests.post")
-    def test_returns_error_for_rate_limit(self, mock_post: object, mock_api_key: object) -> None:
+    def test_returns_error_for_401(self, mock_post: object, mock_get_settings: object) -> None:
+        mock_get_settings.return_value = SimpleNamespace(
+            openrouter_api_key="test-key",
+            openrouter_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            kubectl_timeout_seconds=15,
+            log_tail_lines=100,
+        )
+        mock_post.return_value = FakeResponse(
+            401,
+            '{"error":{"message":"invalid api key"}}',
+            {"error": {"message": "invalid api key"}},
+        )
+
+        result = analyze_with_openrouter("prompt")
+
+        self.assertEqual(result["enabled"], False)
+        self.assertEqual(result["error"], "OpenRouter returned 401: unauthorized")
+
+    @patch("app.openrouter_client.get_settings")
+    @patch("app.openrouter_client.requests.post")
+    def test_returns_error_for_429(self, mock_post: object, mock_get_settings: object) -> None:
+        mock_get_settings.return_value = SimpleNamespace(
+            openrouter_api_key="test-key",
+            openrouter_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            kubectl_timeout_seconds=15,
+            log_tail_lines=100,
+        )
         mock_post.return_value = FakeResponse(
             429,
             '{"error":{"message":"model temporarily rate-limited"}}',
@@ -51,17 +84,39 @@ class OpenRouterClientTests(unittest.TestCase):
         result = analyze_with_openrouter("prompt")
 
         self.assertEqual(result["enabled"], False)
-        self.assertEqual(result["model"], "openai/gpt-oss-120b:free")
         self.assertEqual(result["error"], "OpenRouter returned 429: model temporarily rate-limited")
 
-    @patch("app.openrouter_client.get_openrouter_api_key", return_value="test-key")
-    @patch("app.openrouter_client.requests.post", side_effect=requests.RequestException("network down"))
-    def test_returns_error_for_request_exception(self, mock_post: object, mock_api_key: object) -> None:
+    @patch("app.openrouter_client.get_settings")
+    @patch("app.openrouter_client.requests.post")
+    def test_returns_error_for_request_exception(self, mock_post: object, mock_get_settings: object) -> None:
+        mock_get_settings.return_value = SimpleNamespace(
+            openrouter_api_key="test-key",
+            openrouter_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            kubectl_timeout_seconds=15,
+            log_tail_lines=100,
+        )
+        mock_post.side_effect = requests.RequestException("network down")
+
         result = analyze_with_openrouter("prompt")
 
         self.assertEqual(result["enabled"], False)
-        self.assertEqual(result["model"], "openai/gpt-oss-120b:free")
         self.assertIn("OpenRouter request failed:", result["error"])
+
+    @patch("app.openrouter_client.get_settings")
+    @patch("app.openrouter_client.requests.post")
+    def test_disabled_when_no_key_is_set(self, mock_post: object, mock_get_settings: object) -> None:
+        mock_get_settings.return_value = SimpleNamespace(
+            openrouter_api_key=None,
+            openrouter_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            kubectl_timeout_seconds=15,
+            log_tail_lines=100,
+        )
+
+        result = analyze_with_openrouter("prompt")
+
+        self.assertEqual(result["enabled"], False)
+        self.assertEqual(result["error"], "OPENROUTER_API_KEY is not set")
+        mock_post.assert_not_called()
 
 
 if __name__ == "__main__":

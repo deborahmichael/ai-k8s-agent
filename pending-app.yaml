@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pending-app
+  namespace: demo-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pending-app
+  template:
+    metadata:
+      labels:
+        app: pending-app
+    spec:
+      containers:
+        - name: pending-app
+          image: busybox
+          # Intentionally broken for testing Pending and FailedScheduling behavior.
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              echo "[pending-app] waiting for scheduling"
+              sleep 3600
+          resources:
+            requests:
+              cpu: "1000"
+              memory: "1000Gi"
+            limits:
+              cpu: "1000"
+              memory: "1000Gi"
