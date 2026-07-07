@@ -119,6 +119,61 @@ Environment variables used by the backend:
 
 4. Open the docs or call the API directly at `http://127.0.0.1:8000`.
 
+## Deploy Into Local k3s
+
+This project can run inside a local k3s cluster with a small read-only footprint.
+
+1. Build the container image locally:
+
+   ```bash
+   docker build -t ai-k8s-agent:local .
+   ```
+
+2. If your local k3s node cannot see the Docker image directly, save and import it into k3s/containerd:
+
+   ```bash
+   docker save ai-k8s-agent:local -o ai-k8s-agent-local.tar
+   sudo k3s ctr images import ai-k8s-agent-local.tar
+   ```
+
+3. Create the OpenRouter secret manually. Do not commit the secret file:
+
+   ```bash
+   kubectl create namespace ai-k8s-agent
+   kubectl create secret generic ai-k8s-agent-secrets \
+     -n ai-k8s-agent \
+     --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+   ```
+
+4. Apply the manifests:
+
+   ```bash
+   kubectl apply -f k8s/namespace.yaml
+   kubectl apply -f k8s/serviceaccount.yaml
+   kubectl apply -f k8s/rbac.yaml
+   kubectl apply -f k8s/deployment.yaml
+   kubectl apply -f k8s/service.yaml
+   ```
+
+5. Port-forward the service:
+
+   ```bash
+   kubectl port-forward svc/ai-k8s-agent -n ai-k8s-agent 8000:8000
+   ```
+
+6. Test the deployment:
+
+   ```bash
+   curl http://localhost:8000/health
+   curl "http://localhost:8000/api/investigate?namespace=demo-apps&resource_name=broken-nginx"
+   ```
+
+Notes:
+
+- The app remains read-only inside the cluster.
+- The RBAC in `k8s/rbac.yaml` only grants read access needed for investigation.
+- To investigate more namespaces, create additional namespace-scoped Role/RoleBinding pairs for each namespace.
+
 ## Demo Workloads
 
 Create the demo namespace if it does not already exist:
@@ -259,5 +314,9 @@ Verify the current context with `kubectl config current-context` and confirm you
 - `make test`
 - `make run`
 - `make check`
+- `make docker-build`
+- `make k8s-apply`
+- `make k8s-status`
+- `make k8s-port-forward`
 - `make demo-apply`
 - `make demo-status`

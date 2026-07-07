@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-k8s-agent
+  namespace: ai-k8s-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-k8s-agent
+  template:
+    metadata:
+      labels:
+        app: ai-k8s-agent
+    spec:
+      serviceAccountName: ai-k8s-agent
+      containers:
+        - name: ai-k8s-agent
+          image: ai-k8s-agent:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-k8s-agent-secrets
+                  key: OPENROUTER_API_KEY
+            - name: OPENROUTER_MODEL
+              value: nvidia/nemotron-3-ultra-550b-a55b:free
+            - name: KUBECTL_TIMEOUT_SECONDS
+              value: "15"
+            - name: LOG_TAIL_LINES
+              value: "100"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
