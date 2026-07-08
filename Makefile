@@ -1,4 +1,4 @@
-install:
+﻿install:
 	python -m pip install -r requirements.txt
 
 test:
@@ -13,6 +13,15 @@ check:
 
 docker-build:
 	docker build -t ai-k8s-agent:local .
+
+frontend-install:
+	cd frontend && npm install
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
 
 k8s-apply:
 	kubectl apply -f k8s/namespace.yaml

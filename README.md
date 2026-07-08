@@ -1,4 +1,4 @@
-# AI Kubernetes Troubleshooting Agent
+﻿# AI Kubernetes Troubleshooting Agent
 
 A small, read-only FastAPI backend for investigating Kubernetes problems.
 
@@ -88,6 +88,7 @@ Environment variables used by the backend:
 - `OPENROUTER_MODEL` - defaults to `nvidia/nemotron-3-ultra-550b-a55b:free`
 - `KUBECTL_TIMEOUT_SECONDS` - defaults to `15`
 - `LOG_TAIL_LINES` - defaults to `100`
+- `CORS_ORIGINS` - optional, comma-separated allowed browser origins such as `http://localhost:5173`
 
 ## Run Locally
 
@@ -173,6 +174,34 @@ Notes:
 - The app remains read-only inside the cluster.
 - The RBAC in `k8s/rbac.yaml` only grants read access needed for investigation.
 - To investigate more namespaces, create additional namespace-scoped Role/RoleBinding pairs for each namespace.
+
+## Frontend
+
+A small Vite + React dashboard lives in `frontend/` and only talks to the backend API.
+
+1. Start the backend first with `make run`.
+2. In a second terminal, install the frontend dependencies:
+
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+3. Run the frontend dev server:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Open `http://localhost:5173` in your browser.
+
+The frontend uses `VITE_API_BASE_URL` and defaults to `http://localhost:8000`.
+
+To test the three demo apps from the UI:
+
+- Use `broken-nginx` for the image pull failure demo
+- Use `crashloop-app` for the crash loop demo
+- Use `pending-app` for the scheduling failure demo
 
 ## Demo Workloads
 
@@ -315,6 +344,9 @@ Verify the current context with `kubectl config current-context` and confirm you
 - `make run`
 - `make check`
 - `make docker-build`
+- `make frontend-install`
+- `make frontend-dev`
+- `make frontend-build`
 - `make k8s-apply`
 - `make k8s-status`
 - `make k8s-port-forward`

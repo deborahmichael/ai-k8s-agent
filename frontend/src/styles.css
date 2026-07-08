@@ -1,0 +1,273 @@
+﻿:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #e5eef8;
+  background:
+    radial-gradient(circle at top, rgba(91, 141, 239, 0.3), transparent 32%),
+    linear-gradient(180deg, #07111f 0%, #0b1729 55%, #101b2d 100%);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 32px 20px 48px;
+}
+
+.app-shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.hero {
+  max-width: 780px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid rgba(148, 186, 255, 0.22);
+  border-radius: 999px;
+  color: #a9c4ff;
+  background: rgba(7, 17, 31, 0.72);
+  margin-bottom: 14px;
+}
+
+.hero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 1.05;
+}
+
+.hero p {
+  margin: 0;
+  color: #b8c7dc;
+  max-width: 70ch;
+}
+
+.card {
+  border: 1px solid rgba(148, 186, 255, 0.14);
+  border-radius: 20px;
+  background: rgba(8, 15, 28, 0.84);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+  padding: 20px;
+  backdrop-filter: blur(18px);
+}
+
+.controls-card {
+  margin-bottom: 22px;
+}
+
+.controls-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+.controls-form label {
+  display: grid;
+  gap: 8px;
+  color: #b8c7dc;
+  font-weight: 600;
+}
+
+.controls-form input {
+  border: 1px solid rgba(148, 186, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #eef4fb;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.quick-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-button,
+.secondary-button {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #61a6ff, #4be0c3);
+  color: #04111f;
+}
+
+.primary-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.secondary-button {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f0fb;
+  border: 1px solid rgba(148, 186, 255, 0.16);
+}
+
+.api-note {
+  margin: 14px 0 0;
+  color: #89a0be;
+  font-size: 0.95rem;
+}
+
+.results-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.severity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.severity-high {
+  color: #ffb0b0;
+  background: rgba(255, 88, 88, 0.14);
+}
+
+.severity-medium {
+  color: #ffdca8;
+  background: rgba(255, 184, 77, 0.14);
+}
+
+.severity-low {
+  color: #b4f3d5;
+  background: rgba(76, 197, 145, 0.14);
+}
+
+.kv-list {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.kv-row {
+  display: grid;
+  gap: 4px;
+}
+
+.kv-row dt {
+  color: #9bb0ca;
+  font-size: 0.9rem;
+}
+
+.kv-row dd {
+  margin: 0;
+  color: #eef4fb;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bullets {
+  margin: 0;
+  padding-left: 20px;
+  color: #d9e4f3;
+}
+
+.bullets li + li {
+  margin-top: 8px;
+}
+
+.details-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.details-card {
+  border: 1px solid rgba(148, 186, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.details-card summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.details-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-body {
+  border-top: 1px solid rgba(148, 186, 255, 0.12);
+  padding: 14px 16px 16px;
+}
+
+.code-block {
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  overflow: auto;
+  background: rgba(3, 8, 15, 0.92);
+  border: 1px solid rgba(148, 186, 255, 0.12);
+  color: #dce6f5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-card {
+  border-color: rgba(255, 113, 113, 0.34);
+  color: #ffd1d1;
+  margin-bottom: 18px;
+}
+
+.loading-card,
+.empty-state {
+  color: #c8d5e8;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 900px) {
+  .controls-form {
+    grid-template-columns: 1fr;
+  }
+}

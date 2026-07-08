@@ -1,9 +1,20 @@
-from fastapi import FastAPI, HTTPException, Query
+﻿from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.investigator import investigate_namespace
+from app.settings import get_settings
 
 
 app = FastAPI(title="AI Kubernetes Troubleshooting Agent MVP")
+settings = get_settings()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
