@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
-const API_REQUEST_BASE = API_BASE_URL || '';
+const API_REQUEST_BASE = API_BASE_URL ? API_BASE_URL.replace(/\/$/, '') : '';
 const API_BASE_LABEL = API_BASE_URL || 'Vite proxy /api -> FastAPI :8000';
 const QUICK_DASHBOARD_ITEMS = ['broken-nginx', 'crashloop-app', 'pending-app'];
+
+function buildApiUrl(path) {
+  return API_REQUEST_BASE ? `${API_REQUEST_BASE}${path}` : path;
+}
 
 function formatValue(value) {
   if (value === null || value === undefined) {
@@ -59,12 +63,81 @@ function SeverityBadge({ severity }) {
   return <span className={className}>{severity || 'Unknown'}</span>;
 }
 
+function getHistoryField(item, key, fallback = '') {
+  if (!item) {
+    return fallback;
+  }
+
+  if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
+    return item[key];
+  }
+
+  if (item.compact_result && item.compact_result[key] !== undefined) {
+    return item.compact_result[key];
+  }
+
+  return fallback;
+}
+
+function DiagnosisCard({ title, diagnosis }) {
+  if (!diagnosis) {
+    return null;
+  }
+
+  return (
+    <section className="card diagnosis-card">
+      <div className="card-heading">
+        <h2>{title}</h2>
+        <SeverityBadge severity={diagnosis.severity} />
+      </div>
+      <KeyValueList
+        items={[
+          { label: 'Root cause', value: diagnosis.root_cause },
+          { label: 'Severity', value: diagnosis.severity },
+          { label: 'Confidence', value: diagnosis.confidence },
+          { label: 'Suggested fix', value: diagnosis.suggested_fix },
+        ]}
+      />
+    </section>
+  );
+}
+
 export default function App() {
   const [namespace, setNamespace] = useState('demo-apps');
   const [resourceName, setResourceName] = useState('broken-nginx');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [historyState, setHistoryState] = useState({ enabled: null, items: [], error: '' });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
+  const [selectedHistoryLoading, setSelectedHistoryLoading] = useState(false);
+  const [selectedHistoryError, setSelectedHistoryError] = useState('');
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(buildApiUrl('/api/history'));
+      const payload = await response.json();
+      setHistoryState({
+        enabled: Boolean(payload.enabled),
+        items: Array.isArray(payload.items) ? payload.items : [],
+        error: payload.error || '',
+      });
+    } catch (err) {
+      setHistoryState({
+        enabled: null,
+        items: [],
+        error: err instanceof Error ? err.message : 'Unable to load history.',
+      });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   async function investigate(nextNamespace = namespace, nextResourceName = resourceName) {
     setLoading(true);
@@ -74,12 +147,13 @@ export default function App() {
         namespace: nextNamespace,
         resource_name: nextResourceName,
       });
-      const response = await fetch(`${API_REQUEST_BASE}/api/investigate?${params.toString()}`);
+      const response = await fetch(buildApiUrl(`/api/investigate?${params.toString()}`));
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.detail || `Request failed with status ${response.status}`);
       }
       setResult(payload);
+      void loadHistory();
     } catch (err) {
       setResult(null);
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -88,10 +162,45 @@ export default function App() {
     }
   }
 
+  async function openHistoryItem(historyId) {
+    setSelectedHistoryLoading(true);
+    setSelectedHistoryError('');
+    try {
+      const response = await fetch(buildApiUrl(`/api/history/${encodeURIComponent(historyId)}`));
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || `Request failed with status ${response.status}`);
+      }
+      if (payload.enabled === false) {
+        setSelectedHistoryItem(null);
+        setSelectedHistoryError('History is disabled.');
+        return;
+      }
+      if (!payload.item) {
+        throw new Error(payload.error || 'History item not found.');
+      }
+      setSelectedHistoryItem(payload.item);
+    } catch (err) {
+      setSelectedHistoryItem(null);
+      setSelectedHistoryError(err instanceof Error ? err.message : 'Unable to load history item.');
+    } finally {
+      setSelectedHistoryLoading(false);
+    }
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
     investigate();
   }
+
+  const selectedDiagnosis = selectedHistoryItem
+    ? {
+        root_cause: getHistoryField(selectedHistoryItem, 'root_cause', ''),
+        severity: getHistoryField(selectedHistoryItem, 'severity', 'Unknown'),
+        confidence: getHistoryField(selectedHistoryItem, 'confidence', 0),
+        suggested_fix: getHistoryField(selectedHistoryItem, 'suggested_fix', ''),
+      }
+    : null;
 
   return (
     <div className="page-shell">
@@ -144,6 +253,85 @@ export default function App() {
           </form>
           <p className="api-note">API base URL: {API_BASE_LABEL}</p>
         </section>
+
+        <section className="card history-card">
+          <div className="card-heading">
+            <h2>History</h2>
+            {historyLoading ? <span className="history-status">Loading...</span> : null}
+          </div>
+          {historyState.enabled === false ? (
+            <p className="history-empty">History disabled.</p>
+          ) : historyState.error ? (
+            <p className="history-error">{historyState.error}</p>
+          ) : historyState.items.length === 0 ? (
+            <p className="history-empty">No saved investigations yet.</p>
+          ) : (
+            <div className="history-list">
+              {historyState.items.map((item) => (
+                <button
+                  key={item.history_id || `${item.namespace}-${item.resource_name}-${item.created_at}`}
+                  type="button"
+                  className="history-item"
+                  onClick={() => openHistoryItem(item.history_id)}
+                >
+                  <strong>
+                    {item.namespace} / {item.resource_name}
+                  </strong>
+                  <span>{item.root_cause}</span>
+                  <span>
+                    Severity: {item.severity} | Confidence: {item.confidence}
+                  </span>
+                  <span>{item.created_at}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {selectedHistoryItem ? (
+          <section className="card">
+            <div className="card-heading">
+              <h2>Saved Investigation</h2>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setSelectedHistoryItem(null);
+                  setSelectedHistoryError('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+            <KeyValueList
+              items={[
+                { label: 'Namespace', value: getHistoryField(selectedHistoryItem, 'namespace') },
+                { label: 'Resource name', value: getHistoryField(selectedHistoryItem, 'resource_name') },
+                { label: 'Root cause', value: getHistoryField(selectedHistoryItem, 'root_cause') },
+                { label: 'Severity', value: getHistoryField(selectedHistoryItem, 'severity') },
+                { label: 'Confidence', value: getHistoryField(selectedHistoryItem, 'confidence') },
+                { label: 'Created at', value: getHistoryField(selectedHistoryItem, 'created_at') },
+              ]}
+            />
+            <DiagnosisCard title="Saved Diagnosis" diagnosis={selectedDiagnosis} />
+            <Section title="Saved compact JSON">
+              <JsonBlock value={selectedHistoryItem.compact_result_json || selectedHistoryItem.compact_result} />
+            </Section>
+          </section>
+        ) : null}
+
+        {selectedHistoryLoading ? (
+          <section className="card loading-card">
+            <p>Loading saved investigation...</p>
+          </section>
+        ) : null}
+
+        {selectedHistoryError ? (
+          <section className="card error-card" role="alert">
+            <h2>History Error</h2>
+            <p>{selectedHistoryError}</p>
+          </section>
+        ) : null}
 
         {error ? (
           <section className="card error-card" role="alert">

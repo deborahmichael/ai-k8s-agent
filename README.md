@@ -1,4 +1,4 @@
-﻿# AI Kubernetes Troubleshooting Agent
+# AI Kubernetes Troubleshooting Agent
 
 A small, read-only FastAPI backend for investigating Kubernetes problems.
 
@@ -88,6 +88,11 @@ Environment variables used by the backend:
 - `OPENROUTER_MODEL` - defaults to `nvidia/nemotron-3-ultra-550b-a55b:free`
 - `KUBECTL_TIMEOUT_SECONDS` - defaults to `15`
 - `LOG_TAIL_LINES` - defaults to `100`
+- `INSFORGE_ENABLED` - defaults to `false`
+- `INSFORGE_API_URL` - optional InsForge base URL
+- `INSFORGE_API_KEY` - optional InsForge API key
+- `INSFORGE_HISTORY_TABLE` - defaults to `investigation_history`
+- `HISTORY_LIMIT` - defaults to `20`
 - `CORS_ORIGINS` - optional, comma-separated allowed browser origins such as `http://localhost:5173`
 
 ## Run Locally
@@ -202,6 +207,24 @@ To test the three demo apps from the UI:
 - Use `broken-nginx` for the image pull failure demo
 - Use `crashloop-app` for the crash loop demo
 - Use `pending-app` for the scheduling failure demo
+
+## Optional InsForge History
+
+Optional investigation history can be enabled with InsForge, but the app still works normally when it is disabled or unreachable.
+
+Environment variables:
+
+- `INSFORGE_ENABLED=false` by default
+- `INSFORGE_API_URL` points at the InsForge service
+- `INSFORGE_API_KEY` is stored locally or in your secret manager, never in code
+- `INSFORGE_HISTORY_TABLE` is the table or resource name used for history records
+- `HISTORY_LIMIT` controls how many saved investigations the API returns
+
+Safety notes:
+
+- History saving is best-effort only
+- Investigation still succeeds if history is disabled
+- Do not commit secrets to git
 
 ## Demo Workloads
 
